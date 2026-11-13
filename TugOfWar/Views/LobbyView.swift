@@ -74,6 +74,7 @@ struct LobbyView: View {
                                 Button("Split randomly") { session.shuffleTeams() }
                             }
                         }
+                        .buttonStyle(.borderless)
                     }
                     if session.isHost {
                         Button {

@@ -78,8 +78,12 @@ pointing away from the hole).
   with no warnings from its own sources; practice mode runs both arenas against bots via
   the debug launch flags; camera behaviour, countdown, eliminations, sudden death, results
   overlay. The AI also ran an independent multi-agent code review (five reviewers by
-  subsystem, each finding cross-examined by three skeptical verifiers) and fixed what
-  survived; see the commit history.
+  subsystem, each finding cross-examined by three skeptical verifiers). Fourteen defects
+  survived and were fixed in the second commit: tug counters replaying after a reconnect,
+  a dropped phone rejoining with a stale seat, a host that kept publishing while offline,
+  an optimistic host claim, a List row that fired both lobby buttons, tilt math that broke
+  when the phone was held flat, NFC re-entry, overlapping joins, the generic "iPhone"
+  default name, and a sudden-death hole that could never reach the players.
 * Not verified (needs real devices and a Firebase plist, which is intentionally not in the
   repo): online play between phones, AirDrop link hand-off, tilt feel, NFC read/write.
   The multiplayer code path is the same one practice mode exercises, but network timing

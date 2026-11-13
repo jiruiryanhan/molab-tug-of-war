@@ -11,6 +11,12 @@ import CoreNFC
 final class NFCService {
     var statusMessage: String?
 
+    #if canImport(CoreNFC)
+    var isBusy: Bool { reader != nil || writer != nil }
+    #else
+    var isBusy: Bool { false }
+    #endif
+
     static var isAvailable: Bool {
         #if canImport(CoreNFC)
         return NFCNDEFReaderSession.readingAvailable
@@ -28,6 +34,7 @@ final class NFCService {
     func scanForJoinLink(_ completion: @escaping @MainActor (URL?) -> Void) {
         #if canImport(CoreNFC)
         guard Self.isAvailable else { statusMessage = "NFC is not available on this device."; completion(nil); return }
+        guard reader == nil else { return }   // a scan is already on screen
         let delegate = ReadDelegate { [weak self] url, message in
             self?.statusMessage = message
             completion(url)
@@ -47,6 +54,7 @@ final class NFCService {
     func write(url: URL, _ completion: @escaping @MainActor (Bool) -> Void) {
         #if canImport(CoreNFC)
         guard Self.isAvailable else { statusMessage = "NFC is not available on this device."; completion(false); return }
+        guard writer == nil else { return }   // a write is already on screen
         let delegate = WriteDelegate(url: url) { [weak self] ok, message in
             self?.statusMessage = message
             completion(ok)

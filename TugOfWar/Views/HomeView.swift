@@ -53,7 +53,7 @@ struct HomeView: View {
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.large)
-                        .disabled(!app.isOnline || !NFCService.isAvailable)
+                        .disabled(!app.isOnline || !NFCService.isAvailable || nfc.isBusy)
 
                         Text("Or open a link a friend AirDrops you — it lands straight in the room.")
                             .font(.footnote)

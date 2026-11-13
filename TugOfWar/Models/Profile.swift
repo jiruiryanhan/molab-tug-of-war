@@ -25,8 +25,9 @@ struct Profile: Equatable {
     }
 
     static func defaultName() -> String {
+        // Without the user-assigned-device-name entitlement iOS returns the model ("iPhone").
         let device = UIDevice.current.name
-        if device.count > 1 && device.count < 14 { return device }
+        if device != UIDevice.current.model, device.count > 1, device.count < 14 { return device }
         return "Player \(Int.random(in: 10...99))"
     }
 

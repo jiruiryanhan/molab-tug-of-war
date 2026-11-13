@@ -41,4 +41,5 @@ struct RenderFrame {
     var waitingCount = 0
     var winner: String?
     var tugPulse: Double = 0       // 1 right after a tug, fading to 0
+    var isConnected = true
 }

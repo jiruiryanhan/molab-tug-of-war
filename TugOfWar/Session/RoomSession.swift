@@ -47,6 +47,7 @@ final class RoomSession {
     @ObservationIgnored private var hasSeenMeta = false
     @ObservationIgnored private var joined = false
     @ObservationIgnored private var myRecord: PlayerRecord?
+    @ObservationIgnored private var myRecordRound = -1
     @ObservationIgnored private var hostClaimPending = false
     @ObservationIgnored private var lastTugAt: TimeInterval = -10
     @ObservationIgnored private var avatarKeys: [String: String] = [:]
@@ -225,11 +226,16 @@ final class RoomSession {
 
         if let mine = players.first(where: { $0.id == myId }) {
             myRecord = mine
-        } else if joined, !closed, meta != nil, let rec = myRecord {
-            // We were dropped (reconnect after a disconnect): put ourselves back.
+            myRecordRound = meta?.round ?? -1
+        } else if joined, !closed, let meta, var rec = myRecord {
+            // We were dropped (reconnect after a disconnect): put ourselves back. Our old seat
+            // is only valid while the round we were seated in is still running.
+            if myRecordRound != meta.round || meta.status == .lobby { rec.slot = -1 }
+            myRecord = rec
             transport.set(RoomPaths.player(code, myId), value: RTCodec.encode(rec))
             transport.onDisconnectRemove(RoomPaths.player(code, myId))
             transport.onDisconnectRemove(RoomPaths.input(code, myId))
+            lastSentInput = nil   // inputs/{uid} was removed too; republish on the next tick
         }
 
         for p in players {
@@ -452,14 +458,17 @@ final class RoomSession {
         }
 
         // 3. Host: advance the simulation and publish. Client: glide toward the host's state.
-        if isHost {
+        //    A host whose socket is down pauses rather than piling up writes to replay later.
+        if isHost && transport.isConnected {
             if status == .countdown, let startAt = meta.startAt, serverNow >= startAt {
                 transport.set(RoomPaths.meta(code) + "/status", value: RoomStatus.playing.rawValue)
                 self.meta?.status = .playing
             }
             if status == .playing, var e = engine {
-                let list = players.filter { $0.slot >= 0 }.map { p -> EnginePlayer in
-                    let inp = p.id == myId ? myInput : (inputs[p.id] ?? .zero)
+                // A seated player whose input node is missing (dropped connection) is skipped,
+                // not zeroed, so their tug watermark survives until they are back.
+                let list = players.filter { $0.slot >= 0 }.compactMap { p -> EnginePlayer? in
+                    guard let inp = p.id == myId ? myInput : inputs[p.id] else { return nil }
                     return EnginePlayer(id: p.id, team: p.team, slot: p.slot, pull: inp.pull, tugs: inp.tugs)
                 }
                 let outcome = e.step(dt: dt, players: list)
@@ -561,6 +570,7 @@ final class RoomSession {
         f.suddenDeath = meta.mode == .circular && display.elapsed > GameConfig.holeGrowDelay
         f.winner = meta.winner
         f.tugPulse = clamp(1 - (now - lastTugAt) / 0.35, 0, 1)
+        f.isConnected = transport.isConnected
 
         var dots: [DotSprite] = []
         for p in players where p.slot >= 0 {

@@ -41,13 +41,17 @@ struct GameEngine {
     }
 
     /// Tug counters are monotonic per round; only count the ones we have not seen yet.
+    /// The first sighting is the baseline (already applied by the previous host when this
+    /// engine was created on a host hand-over), and the watermark never goes down (a missing
+    /// or stale input must not replay a whole round of tugs).
     private mutating func consumeTugs(_ p: EnginePlayer) -> Int {
         guard let prev = lastTugs[p.id] else {
             lastTugs[p.id] = p.tugs
-            return p.tugs > 0 && p.tugs <= 3 ? p.tugs : 0
+            return 0
         }
+        guard p.tugs > prev else { return 0 }
         lastTugs[p.id] = p.tugs
-        return max(0, p.tugs - prev)
+        return p.tugs - prev
     }
 
     private mutating func stepLinear(_ dt: Double, _ players: [EnginePlayer]) -> RoundOutcome? {

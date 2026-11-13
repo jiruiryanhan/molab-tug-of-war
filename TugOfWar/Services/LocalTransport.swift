@@ -8,6 +8,7 @@ final class LocalTransport: RoomTransport {
     let myId = "local-me"
     var serverOffsetMs: Double { 0 }
     var isOnline: Bool { false }
+    var isConnected: Bool { true }
 
     private var tree: [String: Any] = [:]
     private var observers: [ObserverToken: (path: [String], handler: @MainActor (Any?) -> Void)] = [:]

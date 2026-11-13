@@ -26,8 +26,9 @@ final class MotionInput {
         manager.deviceMotionUpdateInterval = 1.0 / 30.0
         manager.startDeviceMotionUpdates(to: .main) { [weak self] motion, _ in
             guard let self, let g = motion?.gravity else { return }
-            let down = max(-g.y, 0.05)                       // phone held roughly upright
-            let t = CGVector(dx: atan2(g.x, down), dy: atan2(-g.z, down))
+            // roll: right edge down (+), continuous through flat. pitch: top edge away (+),
+            // 0 upright, 90° flat, continuous past both. Neither depends on how upright you hold it.
+            let t = CGVector(dx: atan2(g.x, hypot(g.y, g.z)), dy: atan2(-g.z, -g.y))
             self.tilt = t
             if self.wantsCalibration {
                 self.neutral = t

@@ -42,7 +42,12 @@ final class FirebaseTransport: RoomTransport {
             self?.serverOffsetMs = (snap.value as? NSNumber)?.doubleValue ?? 0
         }
         db.reference(withPath: ".info/connected").observe(.value) { [weak self] snap in
-            self?.isConnected = (snap.value as? Bool) ?? false
+            let connected = (snap.value as? Bool) ?? false
+            if let self, self.isConnected, !connected {
+                // Writes queued while offline would replay over a new host's state on reconnect.
+                db.purgeOutstandingWrites()
+            }
+            self?.isConnected = connected
         }
     }
 
@@ -109,7 +114,7 @@ final class FirebaseTransport: RoomTransport {
                 return TransactionResult.success(withValue: data)
             }, andCompletionBlock: { _, committed, _ in
                 cont.resume(returning: committed)
-            })
+            }, withLocalEvents: false)
         }
     }
 }

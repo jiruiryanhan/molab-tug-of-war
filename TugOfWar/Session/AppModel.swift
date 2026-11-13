@@ -81,6 +81,10 @@ final class AppModel {
     func handle(url: URL) {
         guard let code = JoinLink.code(from: url) else { return }
         if session?.code == code { return }
+        if busy {
+            errorMessage = "Still joining another room. Open the link again in a moment."
+            return
+        }
         if session != nil { leaveRoom() }
         if isOnline {
             Task { await join(code: code) }
@@ -92,6 +96,7 @@ final class AppModel {
 
     func createRoom(mode: GameMode, teamMode: TeamMode) async {
         guard let transport else { reportOffline(); return }
+        guard !busy else { return }
         busy = true
         defer { busy = false }
         var code = RoomCode.random()
@@ -101,6 +106,7 @@ final class AppModel {
         }
         let s = RoomSession(code: code, transport: transport, profile: profile, isPractice: false)
         await s.create(mode: mode, teamMode: teamMode)
+        session?.leave()
         session = s
     }
 
@@ -110,11 +116,13 @@ final class AppModel {
             return
         }
         guard let transport else { reportOffline(); return }
+        guard !busy else { return }
         busy = true
         defer { busy = false }
         let s = RoomSession(code: code, transport: transport, profile: profile, isPractice: false)
         do {
             try await s.join()
+            session?.leave()
             session = s
         } catch {
             errorMessage = error.localizedDescription
@@ -126,6 +134,7 @@ final class AppModel {
         let s = RoomSession(code: "SOLO", transport: t, profile: profile, isPractice: true)
         await s.create(mode: mode, teamMode: teamMode)
         s.addBots(count: bots)
+        session?.leave()
         session = s
     }
 

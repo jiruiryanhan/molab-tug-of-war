@@ -102,6 +102,11 @@ struct GameView: View {
                 Text("Sudden death — the hole is growing")
                     .font(.caption.bold()).foregroundStyle(.red)
             }
+            if !frame.isConnected {
+                Label("Reconnecting…", systemImage: "wifi.exclamationmark")
+                    .font(.caption.bold()).padding(6)
+                    .background(.orange.opacity(0.2), in: Capsule())
+            }
             if !frame.amParticipating {
                 Text("You joined mid-round. You're in the next one.")
                     .font(.caption).padding(6)

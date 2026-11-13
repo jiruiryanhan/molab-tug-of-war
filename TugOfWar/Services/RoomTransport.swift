@@ -14,6 +14,8 @@ protocol RoomTransport: AnyObject {
     var myId: String { get }
     var serverOffsetMs: Double { get }
     var isOnline: Bool { get }
+    /// False while the socket to the database is down (always true for the local store).
+    var isConnected: Bool { get }
 
     func set(_ path: String, value: Any?)
     func update(_ values: [String: Any])
