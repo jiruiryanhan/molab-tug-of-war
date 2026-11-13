@@ -1,41 +1,147 @@
-# final project proposal: tilt tug-of-war
+# Tug of War — realtime multiplayer for iPhone
 
-## idea
+MoLab final project. A real-time tug-of-war you play with friends, each on their own
+iPhone. Tilt the phone toward the **TUG!** arrow to pull steadily; swipe, tap, or hit the
+big button for a burst. Every player is a round dot with a coloured border and their photo
+(or initials) in the middle. The camera stays on *you* but always keeps the centre line or
+the hole in view, panning and zooming smoothly as the rope moves.
 
-i want to make a realtime multiplayer tug-of-war game for two iphones. each player tilts their phone to pull a shared rope toward their side. the first player to pull the middle marker past their goal wins. i want it to feel like a small physical game people can play together, without shaking the phone hard.
+Two arenas:
 
-## basic version
+| Team Linear | Circular |
+|---|---|
+| Two teams on one rope. Pull the knot past your goal line. Players pick a team in the lobby, or the host splits everyone randomly. | Everyone is tied to one knot over a hole. Pull outward; whoever gets dragged too far falls in. Play as two randomly seated teams or free-for-all. Last one standing wins. After 20 s the hole starts growing (sudden death), so a stalemate always ends. |
 
-- two players join the same game and choose opposite sides.
-- both players hold their phones comfortably and set a neutral position before starting.
-- tilting away from neutral adds pulling strength, with a limit so extreme angles do not give an advantage.
-- both screens show the same rope position, a start state and a winner.
-- a restart button begins another round.
+Join a room three ways: **type the 4-letter code**, **open an AirDropped link**
+(`tugofwar://join/ABCD`, the app's own URL scheme), or **tap an NFC tag** that the host
+wrote the link onto. There is also an offline **practice vs bots** mode that uses the same
+physics and the same room logic without a network.
 
-first i'll test the tilt on one phone, then connect two phones. i plan to start from the class molobby/firebase example for the shared session and use the phone's motion data for input. the exact syncing method still needs testing. no matchmaking, chat or more than two players for the first version.
+Written in Swift / SwiftUI (iOS 17+). Multiplayer is Firebase **Realtime Database** with
+anonymous auth, the same approach as the class MoLobby / AnonLobby examples.
 
-## week by week plan
+## Repo layout
 
-- week 11, nov 13: discuss the proposal with a classmate. make a simple local rope screen and test the tilt input on an iphone. check neutral position and sensitivity.
-- week 12, nov 20: connect two phones to one game. share each player's input and check that both screens agree on the rope position. add start, win and restart states.
-- nov 27, thanksgiving break: leave time for catching up and fixing delay or connection problems. no regular class is listed this week.
-- week 13, dec 4: playtest with two people. tune the pulling strength, fix confusing controls, and check what happens if someone disconnects or restarts.
-- week 14, dec 11: finish the small version, record a short demo, and prepare the final presentation and documentation.
+```
+TugOfWar.xcodeproj/        Xcode project (Firebase via Swift Package Manager)
+TugOfWar/
+  TugOfWarApp.swift        app entry; configures Firebase only if a plist is present
+  Models/                  room / player / input / state records, local profile
+  Engine/                  GameEngine (physics), Layout (geometry), CameraState
+  Services/                RoomTransport protocol + Firebase and in-memory implementations,
+                           anonymous auth, tilt input (CoreMotion), NFC, join links
+  Session/                 RoomSession (lobby + host loop + interpolation + camera), bots
+  Views/                   Home, Lobby, Game canvas + HUD, results
+database.rules.json        Realtime Database rules (signed-in users only)
+docs/ai-usage.md           AI assistance log (prompt + what was produced)
+docs/proposal-week10.md    the original week-10 proposal and plan
+```
 
-## week 10 update
+## Setup
 
-- progress: chose the two-player tilt tug-of-war idea, expanded the proposal, made this repository and added a weekly plan. in week 9 i worked with the molobby study-status example; the tug-of-war game itself is not built yet.
-- problems: i still need to test phone tilt sensitivity, network delay and how to keep the rope position consistent on both phones.
-- plans: start with local tilt and rope movement, then test the shared game on two phones.
-- questions: should one phone calculate the rope position for both players? is the class firebase setup suitable for this kind of frequent input? how often should the phones send updates?
+1. Open `TugOfWar.xcodeproj` in Xcode 16 or newer. Swift Package Manager fetches
+   `firebase-ios-sdk` (13.x) on first open.
+2. **Firebase config.** Drop a `GoogleService-Info.plist` into the `TugOfWar/` folder next to
+   `Info.plist` (it is git-ignored and the synchronized folder picks it up automatically).
+   Use the class project's plist from the private class repo, or create your own Firebase
+   project and enable **Authentication → Anonymous** and **Realtime Database**. The plist
+   must contain `DATABASE_URL`; if it doesn't, create the Realtime Database in the console
+   and download the plist again. Without a plist the app still runs, but only practice mode.
+3. If you use your own Firebase project, paste `database.rules.json` into
+   *Realtime Database → Rules*.
+4. Signing: set your team under *Signing & Capabilities*. NFC tag reading needs a paid
+   developer team; if Xcode complains about the NFC entitlement with a Personal Team, remove
+   the `com.apple.developer.nfc.readersession.formats` entry from `TugOfWar.entitlements`.
+   The NFC buttons then simply report "not available".
+5. Debug builds accept launch arguments (Xcode: *Edit Scheme → Run → Arguments*) that jump
+   straight into a practice round, handy for demos and for the simulator:
+   `--practice=circular,individual --bots=5 --autostart --autotug` (`--autotug` makes your
+   own dot pull by itself). The same flags work as environment variables `TUG_PRACTICE`,
+   `TUG_BOTS`, `TUG_AUTOSTART`, `TUG_AUTOTUG` (with `simctl launch`, prefix them with
+   `SIMCTL_CHILD_`).
+6. Run on real iPhones for tilt and NFC. The simulator has no motion sensors, so there you
+   pull with swipes, taps and the TUG! button (the HUD says which inputs are live).
 
-## peer feedback
+## How to play
 
-pending. i will discuss the proposal with a classmate and add the actual feedback and any changes afterward.
+1. Set your name and (optionally) a photo on the home screen.
+2. **Host:** *Create a room*, pick the arena, and share the code / AirDrop the link /
+   *Write tag*. **Others:** type the code, open the link, or *Tap an NFC tag*.
+3. In the lobby (Team Linear) pick your team or let the host *Split randomly*. In Circular,
+   teams and seats are drawn randomly when the host presses *Start round*.
+4. 3-2-1, GO. Tilt toward the arrow to pull; swipe toward the arrow, tap the field or press
+   **TUG!** for a burst. *recenter* re-zeroes the tilt to how you're holding the phone now.
+5. The host can *Play again* (new random seats) or go *Back to lobby*. Late joiners watch
+   and are seated in the next round. If the host leaves, the longest-present player takes
+   over automatically.
 
-## sources and assistance
+## How the multiplayer works
 
-- [week 10 requirements](https://github.com/molab-itp/content-2026-ima/blob/main/weeks/10_multi.md#homework-week10)
-- [course schedule](https://github.com/molab-itp/content-2026-ima#time--location--dates)
-- [class molobby example](https://github.com/molab-itp/98-MoGallery-Private/tree/main/MoLobby), planned starting point, not copied into this repository.
-- ai assistance: Waldo helped organize my existing game idea into this proposal and weekly plan. no gameplay implementation or playtest results are claimed here.
+Everything for a room lives under `tug/rooms/{CODE}` in Realtime Database:
+
+| node | who writes | what |
+|---|---|---|
+| `meta` | host | mode, team mode, `hostId`, `status` (lobby → countdown → playing → finished), `startAt`, `round`, `winner`, `slotCount` |
+| `players/{uid}` | each phone | name, tiny base64 photo, team, `slot` (−1 = not in this round), join time |
+| `inputs/{uid}` | each phone, ≤10/s while playing | `pull` 0…1 from tilt, `tugs` (monotonic count of bursts) |
+| `state` | host, ~12/s | knot / ring position + velocity, hole radius, eliminated players, elapsed time |
+
+* **One phone simulates.** The host runs `GameEngine` at display rate and publishes
+  `state`. Everyone else glides toward the latest `state`, extrapolated by its velocity, so
+  the rope looks smooth between updates. The host uses its own input directly (no round
+  trip). Answering the proposal's questions: yes, one phone computes the rope for everybody;
+  inputs are sent at most 10×/s and only when they change; state goes out ~12×/s.
+* **Presence.** Each phone registers `onDisconnect` removals for its player and input
+  records, and the host registers `onDisconnect` → `hostId = ""`. If the host record
+  disappears, the earliest-joined player claims `hostId` with a transaction and continues
+  from the last published state. (A phone that reconnects after being dropped re-adds itself.)
+* **Why Realtime Database and not Firestore.** The class MoLobby lobby already uses RTDB.
+  Firestore is built for documents and recommends about one write per second per document;
+  RTDB is a low-latency socket designed for exactly this kind of small, frequent update.
+* **Transport abstraction.** `RoomTransport` is the tiny set of operations the game needs
+  (set / update / read / observe / onDisconnect / compare-and-set). `FirebaseTransport`
+  implements it with RTDB; `LocalTransport` implements it in memory. Practice mode and
+  bots use the exact same `RoomSession` code path — bots are just players that write their
+  own `inputs/{id}` — so the host logic is exercised even without a network.
+
+## Physics and camera
+
+* Pull strength per player is `pull × 140 pt/s²` (steady tilt) plus `55 pt/s` of velocity
+  per tug burst; the rope has friction (velocity decays 1.8/s). More players = more force,
+  like real tug of war; the lobby keeps teams balanced.
+* Linear: the knot wins at ±250 pt.
+* Circular: every player's rope runs from their spot on the ring to one central knot over the
+  hole, taut at rest. The knot moves with the net pull (and springs weakly back to the
+  centre). When the knot moves away from you, your rope drags you off your spot; dragged too
+  far and you fall in. So the player opposite the strongest pull goes first, then the ones
+  beside them, and the rope ring visibly caves in where people are losing. The hole grows
+  after 20 s so a stalemate always ends. All constants live in `Engine/GameConfig.swift`.
+* Tilt: the gravity vector from CoreMotion is turned into "how far the right edge dips" and
+  "how far the top edge dips". The game projects that onto the on-screen arrow direction,
+  so the rule is always *tilt toward the arrow*. A 3° dead zone, full pull at 22°, neutral
+  re-captured at every countdown and on *recenter*. There's an *Invert tilt* switch in the
+  profile card.
+* Camera: the target centre sits 55 % of the way from the centre line / hole to your dot,
+  zoom is chosen so both fit (clamped), and in Circular the world rotates so your pulling
+  direction is straight up and the hole is below you (like the sketch). Position, zoom and
+  rotation ease exponentially toward their targets every frame, so the view never jumps.
+
+## Status
+
+Built with Xcode 27.2 and verified in the iOS Simulator in practice mode (both arenas,
+camera, eliminations, results, rematch). Online play against another phone, AirDrop links,
+tilt and NFC need real devices and a Firebase plist — see *Setup*. The original proposal
+and week-10 notes are in [docs/proposal-week10.md](docs/proposal-week10.md).
+
+## Sources and assistance
+
+* Class weeks [09](https://github.com/molab-itp/content-2026-ima/blob/main/weeks/09_multi.md)
+  and [10](https://github.com/molab-itp/content-2026-ima/blob/main/weeks/10_multi.md); the
+  MoLobby / MoLobbyAnon / AnonLobbyCloud examples were read for their Firebase approach
+  (anonymous sign-in, `observe(.value)` listeners, `onDisconnect`). Nothing from the class
+  repos is copied into this repository.
+* Firebase docs: [Realtime Database on iOS](https://firebase.google.com/docs/database/ios/start),
+  [anonymous auth](https://firebase.google.com/docs/auth/ios/anonymous-auth).
+* Apple docs: Core NFC, Core Motion, SwiftUI `Canvas`.
+* AI assistance: this app was built with Claude Code; see [docs/ai-usage.md](docs/ai-usage.md)
+  for the prompt and a summary of what it produced.

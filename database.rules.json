@@ -1,0 +1,12 @@
+{
+  "rules": {
+    "tug": {
+      "rooms": {
+        "$code": {
+          ".read": "auth != null",
+          ".write": "auth != null"
+        }
+      }
+    }
+  }
+}
