@@ -20,10 +20,11 @@ struct TugOfWarApp: App {
     }
 }
 
-/// Holds the orientations the app currently allows. A round is played in landscape, so the
-/// game screen narrows this to landscape and widens it again on the way out.
+/// Holds the orientations the app currently allows. Menus are portrait; a round is played
+/// in landscape, so the game screen switches the phone over and switches it back on the way
+/// out instead of leaving it sideways.
 final class AppDelegate: NSObject, UIApplicationDelegate {
-    static var allowed: UIInterfaceOrientationMask = [.portrait, .landscapeLeft, .landscapeRight]
+    static var allowed: UIInterfaceOrientationMask = .portrait
 
     func application(_ application: UIApplication,
                      supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
@@ -32,7 +33,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
 }
 
 enum OrientationLock {
-    static let menus: UIInterfaceOrientationMask = [.portrait, .landscapeLeft, .landscapeRight]
+    static let menus: UIInterfaceOrientationMask = .portrait
     static let game: UIInterfaceOrientationMask = [.landscapeLeft, .landscapeRight]
 
     /// Ask iOS to rotate to one of `mask`, and keep it there until this is called again.
