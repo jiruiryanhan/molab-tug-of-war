@@ -1,7 +1,8 @@
 import SwiftUI
 
 /// Draws one `RenderFrame` through its camera. Pure drawing, no state.
-/// All ink is `.primary` / `.systemBackground`, so the field reads in light and dark mode.
+/// Ink is `.primary` and the ledge is a system background colour, so the field reads in
+/// light and dark mode; the pits are always black.
 struct GameCanvas: View {
     let frame: RenderFrame
     let avatars: [String: UIImage]
@@ -12,6 +13,7 @@ struct GameCanvas: View {
             let z = cam.zoom
             let ink = Color.primary
             let paper = Color(.systemBackground)
+            let ledge = Color(.secondarySystemBackground)
             func S(_ p: CGPoint) -> CGPoint { cam.toScreen(p, in: size) }
             func circle(_ c: CGPoint, _ r: CGFloat) -> Path {
                 Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
@@ -39,7 +41,7 @@ struct GameCanvas: View {
                     ctx.draw(Text(gx < 0 ? "RED GOAL" : "BLUE GOAL")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(gx < 0 ? Palette.red : Palette.blue),
-                             at: CGPoint(x: p.x, y: size.height * 0.5 + 60 * z + 18))
+                             at: CGPoint(x: p.x, y: size.height * 0.5 + 70 * z + 18))
                 }
                 // Centre line.
                 var mid = Path()
@@ -48,63 +50,61 @@ struct GameCanvas: View {
                 ctx.stroke(mid, with: .color(ink.opacity(0.45)), style: StrokeStyle(lineWidth: 2, dash: [5, 5]))
                 // Rope.
                 let xs = frame.dots.map { $0.position.x }
-                let left = (xs.min() ?? -GameConfig.linearGap) - 24
-                let right = (xs.max() ?? GameConfig.linearGap) + 24
+                let left = (xs.min() ?? -GameConfig.linearGap) - 30
+                let right = (xs.max() ?? GameConfig.linearGap) + 30
                 var rope = Path()
                 rope.move(to: S(CGPoint(x: left, y: 0)))
                 rope.addLine(to: S(CGPoint(x: right, y: 0)))
-                ctx.stroke(rope, with: .color(ink), style: StrokeStyle(lineWidth: 7 * z, lineCap: .round))
+                ctx.stroke(rope, with: .color(ink), style: StrokeStyle(lineWidth: 8 * z, lineCap: .round))
                 // Knot.
                 let knot = S(CGPoint(x: frame.ropeX, y: 0))
-                ctx.fill(circle(knot, 9 * z), with: .color(paper))
-                ctx.stroke(circle(knot, 9 * z), with: .color(ink), lineWidth: 3 * z)
+                ctx.fill(circle(knot, 10 * z), with: .color(paper))
+                ctx.stroke(circle(knot, 10 * z), with: .color(ink), lineWidth: 3 * z)
 
             case .circular:
-                let hole = S(.zero)
-                // Where the ring rests when nobody is winning.
-                ctx.stroke(circle(hole, frame.ringRadius * z), with: .color(ink.opacity(0.12)),
-                           style: StrokeStyle(lineWidth: 2, dash: [6, 8]))
-                // The hole: always a dark pit, with a rim so it still reads in dark mode.
-                ctx.fill(circle(hole, frame.holeR * z + 8 * z), with: .color(ink.opacity(0.12)))
-                ctx.fill(circle(hole, frame.holeR * z), with: .color(.black))
-                ctx.stroke(circle(hole, frame.holeR * z), with: .color(ink.opacity(0.35)), lineWidth: 2)
+                // A ring-shaped ledge: a pit outside it, and a growing hole inside it.
+                let centre = S(.zero)
+                let outerPx = frame.outerR * z
+                let holePx = frame.holeR * z
+                ctx.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
+                var band = Path()
+                band.addPath(circle(centre, outerPx))
+                band.addPath(circle(centre, holePx))
+                ctx.fill(band, with: .color(ledge), style: FillStyle(eoFill: true))
+                ctx.stroke(circle(centre, outerPx), with: .color(ink.opacity(0.55)), lineWidth: 2.5)
+                ctx.stroke(circle(centre, holePx), with: .color(ink.opacity(0.55)), lineWidth: 2.5)
                 if frame.suddenDeath {
                     ctx.draw(Text("SUDDEN DEATH").font(.caption2.weight(.semibold))
-                                .foregroundStyle(.white), at: hole)
+                                .foregroundStyle(.white), at: centre)
                 }
-                // Ropes: a spoke from every standing player to the knot, and the rope ring
-                // through the players (it caves in where people are being dragged).
-                let knot = S(frame.knot)
+                // The shared rope, running through everyone still standing.
                 let standing = frame.dots.filter { $0.elimProgress == 0 }.sorted { $0.slot < $1.slot }
-                var spokes = Path()
-                for d in standing {
-                    spokes.move(to: S(d.position))
-                    spokes.addLine(to: knot)
-                }
-                ctx.stroke(spokes, with: .color(ink.opacity(0.25)), lineWidth: 2.5 * z)
                 ctx.stroke(closedSpline(standing.map { S($0.position) }), with: .color(ink),
-                           style: StrokeStyle(lineWidth: 7 * z, lineCap: .round, lineJoin: .round))
-                ctx.fill(circle(knot, 8 * z), with: .color(paper))
-                ctx.stroke(circle(knot, 8 * z), with: .color(ink), lineWidth: 3 * z)
+                           style: StrokeStyle(lineWidth: 8 * z, lineCap: .round, lineJoin: .round))
             }
 
-            // Dots (eliminated ones shrink into the hole).
-            let holeScreen = S(.zero)
+            // Dots. A player who is out falls into whichever pit took them.
             for d in frame.dots {
                 var p = S(d.position)
                 var r = GameConfig.dotRadius * z
                 var alpha = 1.0
                 if d.elimProgress > 0 {
                     if d.elimProgress >= 1 { continue }
-                    p = CGPoint(x: p.x + (holeScreen.x - p.x) * d.elimProgress,
-                                y: p.y + (holeScreen.y - p.y) * d.elimProgress)
+                    let radius = hypot(d.position.x, d.position.y)
+                    let fellInward = frame.mode == .linear
+                        || radius <= (frame.holeR + frame.outerR) / 2
+                    let target = fellInward
+                        ? S(.zero)
+                        : S(CGPoint(x: d.position.x * 1.3, y: d.position.y * 1.3))
+                    p = CGPoint(x: p.x + (target.x - p.x) * d.elimProgress,
+                                y: p.y + (target.y - p.y) * d.elimProgress)
                     r *= 1 - 0.8 * d.elimProgress
                     alpha = 1 - d.elimProgress
                 }
                 let color = Palette.color(team: d.team, colorIndex: d.colorIndex)
                 let rect = CGRect(x: p.x - r, y: p.y - r, width: 2 * r, height: 2 * r)
                 if d.isMe {
-                    ctx.fill(circle(p, r + 7 * z), with: .color(color.opacity(0.25 * alpha)))
+                    ctx.fill(circle(p, r + 8 * z), with: .color(color.opacity(0.25 * alpha)))
                 }
                 ctx.fill(Path(ellipseIn: rect), with: .color(color.opacity(0.3 * alpha)))
                 if let img = avatars[d.id] {
@@ -118,7 +118,7 @@ struct GameCanvas: View {
                                 .foregroundStyle(ink.opacity(alpha)), at: p)
                 }
                 ctx.stroke(Path(ellipseIn: rect), with: .color(color.opacity(alpha)), lineWidth: 4 * z)
-                if !d.isMe && z > 0.55 {
+                if !d.isMe && z > 0.45 {
                     ctx.draw(Text(d.name).font(.caption2)
                                 .foregroundStyle(Color.secondary.opacity(alpha)),
                              at: CGPoint(x: p.x, y: p.y + r + 11))
@@ -133,8 +133,9 @@ struct GameCanvas: View {
                 let p = S(me.position)
                 let r = GameConfig.dotRadius * z
                 let pulse = frame.tugPulse
-                let lift = r + (frame.mode == .circular ? 64 : 42) + pulse * 6
-                let anchor = CGPoint(x: p.x, y: p.y - lift)
+                let lift = r + 46 + pulse * 6
+                // Keep the arrow on screen: drop it below the dot when the dot is near the top.
+                let anchor = CGPoint(x: p.x, y: p.y - lift < 40 ? p.y + lift : p.y - lift)
                 let len = 40 + frame.myPull * 18 + pulse * 10
                 let end = CGPoint(x: anchor.x + d.dx * len, y: anchor.y + d.dy * len)
                 var arrow = Path()

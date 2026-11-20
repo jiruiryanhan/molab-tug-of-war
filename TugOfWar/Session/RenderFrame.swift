@@ -11,7 +11,7 @@ struct DotSprite: Identifiable {
     var initials: String
     var name: String
     var isMe: Bool
-    var elimProgress: Double       // 0 = alive … 1 = gone (fall-in animation)
+    var elimProgress: Double       // 0 = standing … 1 = gone (fall-out animation)
 }
 
 /// Snapshot of everything the game view draws, rebuilt every display frame.
@@ -19,10 +19,9 @@ struct RenderFrame {
     var mode: GameMode = .linear
     var teamMode: TeamMode = .teams
     var status: RoomStatus = .lobby
-    var ropeX: Double = 0
-    var knot: CGPoint = .zero         // circular: where the central knot is
-    var ringRadius: Double = GameConfig.ringMinRadius
-    var holeR: Double = GameConfig.holeRadius
+    var ropeX: Double = 0                        // linear: where the knot sits
+    var holeR: Double = GameConfig.holeStartRadius   // circular: the growing hole
+    var outerR: Double = GameConfig.outerRadius      // circular: the outer edge of the ledge
     var dots: [DotSprite] = []
     var myId = ""
     var myTeam: Team = .none

@@ -107,6 +107,9 @@ struct LobbyView: View {
                 } footer: {
                     if session.isHost && session.players.count < 2 {
                         Text("At least two players are needed.")
+                    } else {
+                        Label("Rounds are played in landscape. Turn your phone sideways when it starts.",
+                              systemImage: "rotate.right")
                     }
                 }
             }

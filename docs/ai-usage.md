@@ -136,3 +136,55 @@ clean, in Apple's own interface style — then merge to main.)
   light and dark mode (home, lobby, both arenas, sudden death, results).
 * Still unverified: online play, AirDrop links, tilt and NFC, which need real phones and a
   Firebase config file.
+
+## Session 3 — 19 Nov 2026
+
+### My prompt (verbatim)
+
+> 我看现在你这个 demo，提几点想法：
+>
+> 1. 屏幕方向：我希望这个游戏玩的时候是横屏的，需要把手机横过来才能玩。
+> 2. 活动范围与机制：我觉得你现在这个球的可活动范围太小了。你看它一直在顶着边往顶上挤、往顶上拉。最后一般很多都剩下一个红、一个蓝。
+> 3. 场景与玩法建议：我希望能做成中间是一个不断扩大的洞，外圈也是坑（都是黑的）。这就相当于是在一个圆环上拔河：中间有个洞，外面也是边界，掉出界就完了，两边同样都是坑
+
+(In English: play rounds in landscape; the play area is too small and the ring keeps jamming
+against the top edge, with rounds ending one red against one blue; make the circular arena a
+ring-shaped ledge with a growing hole in the middle and a pit outside, both black, so going
+over either edge puts you out.)
+
+### What the AI produced
+
+* **Landscape.** The app now allows portrait and both landscape orientations, and the game
+  screen asks iOS for landscape while it is on screen (an app delegate holds the allowed
+  mask, `requestGeometryUpdate` performs the rotation) and releases it on the way out. The
+  lobby says a round is played sideways. The game HUD has a compact layout for landscape:
+  one row with the pull meter, the TUG! button and recenter.
+* **Orientation-aware tilt.** Device roll and pitch are rotated into screen axes from the
+  window scene's interface orientation, so "tilt toward the arrow" still holds with the
+  phone turned.
+* **The circular arena was rebuilt.** The old version moved one central knot and dragged
+  players off fixed spots, which made the whole ring translate (that is what kept pressing
+  against the top edge) and could only ever eliminate the player opposite the pull. Now the
+  arena is a ring-shaped ledge: a hole in the middle that grows all round, a pit outside,
+  and one shared rope. A player only moves along their radius, outward while they pull
+  harder than the average of everyone still standing and inward while they pull less, so
+  the rope is a zero-sum budget and both edges are lethal. Nothing translates any more, so
+  the arena cannot drift off screen.
+* **More room to move.** Dots, rope spacing and the arena are larger, and the camera frames
+  both edges of the ledge and tightens as the hole grows.
+* Bots learned to read the ledge: they dig in near the hole, ease off near the outer edge,
+  and each one prefers its own standing distance so the field spreads out and the hole
+  catches the hindmost instead of everyone at once.
+* Tuning came from timed simulator runs: the first radial physics threw a player who held
+  full pull off the outer edge in about two seconds, so the force was softened and the
+  damping raised.
+
+### What was verified
+
+* Builds clean; rounds were run in the iOS Simulator in landscape, in light and dark mode,
+  for both arenas and both circular team modes: the countdown, the growing hole, falling in
+  at either edge, sudden death, results and rematch.
+* Still unverified: online play, AirDrop links, tilt and NFC, which need real phones and a
+  Firebase config file. The landscape tilt mapping in particular has not been felt on a
+  real device.
+

@@ -7,8 +7,15 @@ final class BotController {
     let transport: RoomTransport
     let code: String
     private(set) var ids: [String] = []
+
+    /// Set by the session so a bot on the ring can tell where it is standing.
+    var radiusProvider: ((String) -> Double?)?
+    var holeProvider: (() -> Double)?
+
     private var pulls: [String: Double] = [:]
     private var targets: [String: Double] = [:]
+    private var nerve: [String: Double] = [:]
+    private var bias: [String: Double] = [:]
     private var tugs: [String: Int] = [:]
     private var nextTug: [String: TimeInterval] = [:]
     private var nextTarget: [String: TimeInterval] = [:]
@@ -34,6 +41,8 @@ final class BotController {
                                    joinedAt: transport.serverNow + Double(i + 1))
             transport.set(RoomPaths.player(code, id), value: RTCodec.encode(rec))
             ids.append(id)
+            nerve[id] = Double.random(in: 0.75...1.1)   // how hard this bot likes to pull
+            bias[id] = Double.random(in: -70...70)      // where on the ledge it likes to stand
         }
     }
 
@@ -49,8 +58,8 @@ final class BotController {
         var updates: [String: Any] = [:]
         for id in ids {
             if now >= (nextTarget[id] ?? 0) {
-                targets[id] = Double.random(in: 0.25...0.95)
-                nextTarget[id] = now + Double.random(in: 0.8...2.0)
+                targets[id] = aim(id)
+                nextTarget[id] = now + Double.random(in: 0.5...1.4)
             }
             let p = pulls[id] ?? 0
             let t = targets[id] ?? 0.5
@@ -67,6 +76,24 @@ final class BotController {
             updates[RoomPaths.input(code, id)] = RTCodec.encode(input)
         }
         transport.update(updates)
+    }
+
+    /// On the ring a bot digs in when the hole gets close and eases off near the outer
+    /// edge, so it does not pull itself over the brink.
+    private func aim(_ id: String) -> Double {
+        let base = nerve[id] ?? 1
+        guard let r = radiusProvider?(id) else {
+            return clamp(Double.random(in: 0.25...0.95) * base, 0, 1)
+        }
+        let hole = holeProvider?() ?? GameConfig.holeStartRadius
+        // Each bot likes its own spot on the ledge, so the field spreads out and the hole
+        // catches the hindmost rather than everyone at once.
+        let safe = GameConfig.bandMiddle(hole: hole) + (bias[id] ?? 0)
+        let room = max(GameConfig.outerRadius - hole, 1)
+        // 1 when hugging the hole, 0 when hugging the outer edge.
+        let danger = clamp((safe - r) / (room / 2), -1, 1)
+        let wanted = 0.5 + 0.45 * danger + Double.random(in: -0.12...0.12)
+        return clamp(wanted * base, 0, 1)
     }
 
     func stop() {

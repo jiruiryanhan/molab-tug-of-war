@@ -10,7 +10,7 @@ Two arenas:
 
 | Team Linear | Circular |
 |---|---|
-| Two teams on one rope. Pull the knot past your goal line. Players pick a team in the lobby, or the host splits everyone randomly. | Everyone is tied to one knot over a hole. Pull outward; whoever gets dragged too far falls in. Play as two randomly seated teams or free-for-all. Last one standing wins. After 20 s the hole starts growing (sudden death), so a stalemate always ends. |
+| Two teams on one rope. Pull the knot past your goal line. Players pick a team in the lobby, or the host splits everyone randomly. | Tug of war on a ring-shaped ledge: a hole in the middle that keeps growing, and a pit outside. Everyone holds one rope, so the ground you win is ground somebody else loses. Go over either edge and you are out. Two randomly seated teams or free-for-all; last one standing wins. |
 
 Join a room three ways: **type the 4-letter code**, **open an AirDropped link**
 (`tugofwar://join/ABCD`, the app's own URL scheme), or **tap an NFC tag** that the host
@@ -113,21 +113,27 @@ Everything for a room lives under `tug/rooms/{CODE}` in Realtime Database:
   per tug burst; the rope has friction (velocity decays 1.8/s). More players = more force,
   like real tug of war; the lobby keeps teams balanced.
 * Linear: the knot wins at ±250 pt.
-* Circular: every player's rope runs from their spot on the ring to one central knot over the
-  hole, taut at rest. The knot moves with the net pull (and springs weakly back to the
-  centre). When the knot moves away from you, your rope drags you off your spot; dragged too
-  far and you fall in. So the player opposite the strongest pull goes first, then the ones
-  beside them, and the rope ring visibly caves in where people are losing. The hole grows
-  after 20 s so a stalemate always ends. All constants live in `Engine/GameConfig.swift`.
+* Circular: everyone stands on a ring-shaped ledge and holds one shared rope, so the rope is
+  a zero-sum budget. You move outward while you pull harder than the average of everyone
+  still standing, and inward while you pull less. Cross the inner edge and the hole swallows
+  you; cross the outer edge and you drop off the ledge. Only your distance from the middle
+  changes, so the arena never drifts off screen. The hole grows from five seconds in, and
+  much faster after thirty, so the ledge keeps narrowing and a round always ends. The rope
+  drawn through the players visibly caves in wherever somebody is losing ground.
+  All constants live in `Engine/GameConfig.swift`.
 * Tilt: the gravity vector from CoreMotion is turned into "how far the right edge dips" and
   "how far the top edge dips". The game projects that onto the on-screen arrow direction,
   so the rule is always *tilt toward the arrow*. A 3° dead zone, full pull at 22°, neutral
   re-captured at every countdown and on *recenter*. There's an *Invert tilt* switch in the
   profile card.
-* Camera: the target centre sits 55 % of the way from the centre line / hole to your dot,
-  zoom is chosen so both fit (clamped), and in Circular the world rotates so your pulling
-  direction is straight up and the hole is below you (like the sketch). Position, zoom and
-  rotation ease exponentially toward their targets every frame, so the view never jumps.
+* Camera: in Linear the centre sits 55 % of the way from the centre line to your dot. In
+  Circular the world rotates so your pulling direction is straight up, the hole sits below
+  you and the outer pit above, and the zoom frames both edges of the ledge, so the view
+  tightens as the hole grows. Position, zoom and rotation ease exponentially toward their
+  targets every frame, so the view never jumps.
+* Rounds are played in landscape. The game screen asks iOS for a landscape interface while
+  it is on screen and releases it again on the way out; the tilt input is rotated into
+  screen axes, so "tilt toward the arrow" holds however the phone is turned.
 
 ## Status
 

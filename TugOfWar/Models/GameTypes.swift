@@ -104,21 +104,22 @@ struct PlayerInput: Codable, Equatable {
 
 /// `rooms/{code}/state` – the host's simulation, published ~12x per second.
 struct GameState: Codable, Equatable {
-    var x: Double                  // linear: knot offset along the rope. circular: knot offset x
-    var y: Double                  // circular: knot offset y
+    var x: Double                  // linear: how far the knot has moved along the rope
     var vx: Double
-    var vy: Double
-    var holeR: Double              // circular: current hole radius (grows in sudden death)
-    var elim: [String: Double]     // player id -> elapsed seconds when they fell in
+    var holeR: Double              // circular: the hole in the middle, which grows all round
+    var radii: [String: Double]    // circular: how far each player stands from the hole
+    var radVel: [String: Double]   // circular: how fast they are sliding in or out
+    var elim: [String: Double]     // player id -> elapsed seconds when they went out
     var seq: Int
     var elapsed: Double            // seconds since the round went live
     var t: Double                  // server time (ms) when published
 
-    static func initial(holeR: Double = GameConfig.holeRadius) -> GameState {
-        GameState(x: 0, y: 0, vx: 0, vy: 0, holeR: holeR, elim: [:], seq: 0, elapsed: 0, t: 0)
+    static func initial(holeR: Double = GameConfig.holeStartRadius) -> GameState {
+        GameState(x: 0, vx: 0, holeR: holeR, radii: [:], radVel: [:], elim: [:], seq: 0, elapsed: 0, t: 0)
     }
 
-    var knot: CGPoint { CGPoint(x: x, y: y) }
+    /// Where a player stands on the ledge; everyone starts halfway out.
+    func radius(_ id: String) -> Double { radii[id] ?? GameConfig.startRadius }
 }
 
 enum RoomError: LocalizedError {
@@ -135,17 +136,17 @@ enum RoomError: LocalizedError {
     }
 }
 
-// Realtime Database drops empty maps, so `elim` may be missing on the wire.
+// Realtime Database drops empty maps, so the dictionaries may be missing on the wire.
 extension GameState {
-    enum CodingKeys: String, CodingKey { case x, y, vx, vy, holeR, elim, seq, elapsed, t }
+    enum CodingKeys: String, CodingKey { case x, vx, holeR, radii, radVel, elim, seq, elapsed, t }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         x = try c.decodeIfPresent(Double.self, forKey: .x) ?? 0
-        y = try c.decodeIfPresent(Double.self, forKey: .y) ?? 0
         vx = try c.decodeIfPresent(Double.self, forKey: .vx) ?? 0
-        vy = try c.decodeIfPresent(Double.self, forKey: .vy) ?? 0
-        holeR = try c.decodeIfPresent(Double.self, forKey: .holeR) ?? GameConfig.holeRadius
+        holeR = try c.decodeIfPresent(Double.self, forKey: .holeR) ?? GameConfig.holeStartRadius
+        radii = try c.decodeIfPresent([String: Double].self, forKey: .radii) ?? [:]
+        radVel = try c.decodeIfPresent([String: Double].self, forKey: .radVel) ?? [:]
         elim = try c.decodeIfPresent([String: Double].self, forKey: .elim) ?? [:]
         seq = try c.decodeIfPresent(Int.self, forKey: .seq) ?? 0
         elapsed = try c.decodeIfPresent(Double.self, forKey: .elapsed) ?? 0

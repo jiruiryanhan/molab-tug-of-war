@@ -119,6 +119,9 @@ final class RoomSession {
     func addBots(count: Int) {
         let b = BotController(transport: transport, code: code)
         b.join(count: count, mode: mode, myTeam: me?.team ?? myRecord?.team ?? .red)
+        // So a bot on the ring can ease off near the outer edge and dig in near the hole.
+        b.radiusProvider = { [weak self] id in self?.display.radii[id] }
+        b.holeProvider = { [weak self] in self?.display.holeR ?? GameConfig.holeStartRadius }
         bots = b
     }
 
@@ -440,8 +443,8 @@ final class RoomSession {
         }
         #if DEBUG
         if debugAutoTug, status == .playing, amParticipating, !amEliminated {
-            myInput.pull = 0.75
-            if now - lastTugAt > 0.45 { tug() }
+            myInput.pull = 0.5 + 0.4 * sin(now * 0.7)
+            if now - lastTugAt > 0.8 { tug() }
         }
         #endif
 
@@ -486,15 +489,21 @@ final class RoomSession {
                 }
             }
         } else if let net = netState, status == .playing || status == .finished {
+            // Glide toward the host's state, extrapolated by its velocities so the rope
+            // keeps moving smoothly between updates.
             let age = clamp(now - netReceivedAt, 0, 0.3)
-            let tx = net.x + net.vx * age
-            let ty = net.y + net.vy * age
             let k = 1 - exp(-dt * 12)
-            display.x += (tx - display.x) * k
-            display.y += (ty - display.y) * k
+            display.x += (net.x + net.vx * age - display.x) * k
             display.vx = net.vx
-            display.vy = net.vy
             display.holeR += (net.holeR - display.holeR) * k
+            var radii: [String: Double] = [:]
+            for (id, r) in net.radii {
+                let target = r + (net.radVel[id] ?? 0) * age
+                let current = display.radii[id] ?? target
+                radii[id] = current + (target - current) * k
+            }
+            display.radii = radii
+            display.radVel = net.radVel
             display.elim = net.elim
             display.elapsed = net.elapsed
             display.seq = net.seq
@@ -527,19 +536,21 @@ final class RoomSession {
             target.rotation = 0
 
         case .circular:
-            let r = Layout.ringRadius(count: meta.slotCount)
+            let inner = display.holeR
+            let outer = GameConfig.outerRadius
             if active, let me {
-                let mePos = Layout.circularPosition(slot: me.slot, count: meta.slotCount, knot: display.knot)
-                let c = CGPoint(x: mePos.x * 0.55, y: mePos.y * 0.55)
-                let up = hypot(mePos.x - c.x, mePos.y - c.y) + GameConfig.dotRadius + 90
-                let down = hypot(c.x, c.y) + display.holeR + 30
-                target.center = c
-                target.zoom = clamp((h / 2 - 130) / max(up, down), 0.35, 1.35)
+                // Sit between the middle of the ledge and my dot, and frame both edges of
+                // the ledge, so the hole and the outer pit are always on screen.
+                let c = (GameConfig.bandMiddle(hole: inner) + display.radius(myId)) / 2
+                let half = max(c - inner, outer - c) + GameConfig.dotRadius + 12
+                let dir = Layout.outward(slot: me.slot, count: meta.slotCount)
+                target.center = CGPoint(x: dir.dx * c, y: dir.dy * c)
+                target.zoom = clamp((h / 2 - 14) / half, 0.2, 1.6)
                 // Rotate the world so my pulling direction points straight up.
                 target.rotation = -.pi / 2 - Layout.ringAngle(slot: me.slot, count: meta.slotCount)
             } else {
                 target.center = .zero
-                target.zoom = clamp((min(w, h) / 2 - 24) / (r + GameConfig.dotRadius + 10), 0.3, 1.2)
+                target.zoom = clamp((min(w, h) / 2 - 12) / (outer + GameConfig.dotRadius), 0.15, 1.2)
                 target.rotation = camera.initialized ? camera.rotation : 0
             }
         }
@@ -552,9 +563,8 @@ final class RoomSession {
         f.teamMode = meta.teamMode
         f.status = meta.status
         f.ropeX = display.x
-        f.knot = display.knot
-        f.ringRadius = Layout.ringRadius(count: meta.slotCount)
         f.holeR = display.holeR
+        f.outerR = GameConfig.outerRadius
         f.myId = myId
         f.myTeam = me?.team ?? Team.none
         f.myColorIndex = me?.colorIndex ?? 0
@@ -567,7 +577,7 @@ final class RoomSession {
             f.countdownSeconds = max(0, Int(ceil((startAt - serverNow) / 1000)))
         }
         f.elapsed = display.elapsed
-        f.suddenDeath = meta.mode == .circular && display.elapsed > GameConfig.holeGrowDelay
+        f.suddenDeath = meta.mode == .circular && display.elapsed > GameConfig.holeRushDelay
         f.winner = meta.winner
         f.tugPulse = clamp(1 - (now - lastTugAt) / 0.35, 0, 1)
         f.isConnected = transport.isConnected
@@ -577,7 +587,8 @@ final class RoomSession {
             let pos: CGPoint
             switch meta.mode {
             case .linear: pos = Layout.linearPosition(team: p.team, slot: p.slot, ropeX: display.x)
-            case .circular: pos = Layout.circularPosition(slot: p.slot, count: meta.slotCount, knot: display.knot)
+            case .circular: pos = Layout.circularPosition(slot: p.slot, count: meta.slotCount,
+                                                          radius: display.radius(p.id))
             }
             var progress = 0.0
             if display.elim[p.id] != nil {

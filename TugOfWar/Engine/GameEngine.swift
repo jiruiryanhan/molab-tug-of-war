@@ -29,8 +29,6 @@ struct GameEngine {
         self.state = state
     }
 
-    var ringRadius: Double { Layout.ringRadius(count: slotCount) }
-
     mutating func step(dt rawDt: Double, players: [EnginePlayer]) -> RoundOutcome? {
         let dt = clamp(rawDt, 0, 0.05)
         state.elapsed += dt
@@ -53,6 +51,8 @@ struct GameEngine {
         lastTugs[p.id] = p.tugs
         return p.tugs - prev
     }
+
+    // MARK: - Team Linear
 
     private mutating func stepLinear(_ dt: Double, _ players: [EnginePlayer]) -> RoundOutcome? {
         var force = 0.0
@@ -83,47 +83,56 @@ struct GameEngine {
         return nil
     }
 
+    // MARK: - Circular
+
+    /// Tug of war on a ring-shaped ledge. Everyone holds one rope, so the rope you win is
+    /// rope somebody else loses: a player moves out when they pull harder than the average
+    /// of everyone still standing, and in when they pull less. There is a hole in the middle
+    /// that keeps growing and a pit outside the ledge, so you can lose at either end.
     private mutating func stepCircular(_ dt: Double, _ players: [EnginePlayer]) -> RoundOutcome? {
-        let r = ringRadius
-        var fx = 0.0, fy = 0.0, ix = 0.0, iy = 0.0
+        // The hole grows all round, and much faster once the round drags on.
+        let rate: Double
+        if state.elapsed > GameConfig.holeRushDelay {
+            rate = GameConfig.holeRushRate
+        } else if state.elapsed > GameConfig.holeGrowDelay {
+            rate = GameConfig.holeGrowRate
+        } else {
+            rate = 0
+        }
+        state.holeR = min(state.holeR + rate * dt, GameConfig.outerRadius - GameConfig.dotRadius)
+
         var alive: [EnginePlayer] = []
+        var pulls: [Double] = []
+        var tugs: [Double] = []
         for p in players where p.slot >= 0 && state.elim[p.id] == nil {
+            if state.radii[p.id] == nil { state.radii[p.id] = GameConfig.startRadius }
             alive.append(p)
-            let u = Layout.outward(slot: p.slot, count: slotCount)
-            fx += u.dx * p.pull * GameConfig.pullForce
-            fy += u.dy * p.pull * GameConfig.pullForce
-            let n = Double(consumeTugs(p))
-            ix += u.dx * n * GameConfig.tugImpulse
-            iy += u.dy * n * GameConfig.tugImpulse
+            pulls.append(p.pull)
+            tugs.append(Double(consumeTugs(p)))
         }
-        // The knot is elastic: it drifts back toward the hole when nobody is winning.
-        fx -= state.x * GameConfig.ringSpring
-        fy -= state.y * GameConfig.ringSpring
+        guard !alive.isEmpty else { return .draw }
 
-        state.vx += ix + fx * dt
-        state.vy += iy + fy * dt
-        let damp = max(0, 1 - GameConfig.damping * dt)
-        state.vx *= damp; state.vy *= damp
-        let speed = hypot(state.vx, state.vy)
-        if speed > GameConfig.maxSpeed {
-            state.vx *= GameConfig.maxSpeed / speed
-            state.vy *= GameConfig.maxSpeed / speed
-        }
-        state.x += state.vx * dt
-        state.y += state.vy * dt
+        let meanPull = pulls.reduce(0, +) / Double(alive.count)
+        let meanTug = tugs.reduce(0, +) / Double(alive.count)
 
-        // Sudden death: the hole slowly grows so a stalemate always ends.
-        if state.elapsed > GameConfig.holeGrowDelay {
-            state.holeR = min(state.holeR + GameConfig.holeGrowRate * dt, r + GameConfig.dotRadius)
+        for (i, p) in alive.enumerated() {
+            var v = state.radVel[p.id] ?? 0
+            v += (tugs[i] - meanTug) * GameConfig.radialTug
+            v += (pulls[i] - meanPull) * GameConfig.radialForce * dt
+            v *= max(0, 1 - GameConfig.radialDamping * dt)
+            v = clamp(v, -GameConfig.maxRadialSpeed, GameConfig.maxRadialSpeed)
+            state.radVel[p.id] = v
+            state.radii[p.id] = state.radius(p.id) + v * dt
         }
 
-        // Out when dragged too far off your base, or when the (growing) hole reaches you.
-        let limit = Layout.dragLimit(count: slotCount)
+        // Out at either end: swallowed by the hole, or dragged off the outer edge.
+        let edge = GameConfig.dotRadius * 0.4
         for p in alive {
-            let drag = Layout.circularDrag(slot: p.slot, count: slotCount, knot: state.knot)
-            let pos = Layout.circularPosition(slot: p.slot, count: slotCount, knot: state.knot)
-            if drag > limit || hypot(pos.x, pos.y) < state.holeR + GameConfig.dotRadius * 0.4 {
+            let r = state.radius(p.id)
+            if r <= state.holeR + edge || r >= GameConfig.outerRadius - edge {
                 state.elim[p.id] = state.elapsed
+                state.radVel[p.id] = 0
+                state.radii[p.id] = clamp(r, state.holeR, GameConfig.outerRadius)
             }
         }
 
