@@ -9,7 +9,7 @@ struct PlayerDotView: View {
 
     var body: some View {
         ZStack {
-            Circle().fill(color.opacity(0.35))
+            Circle().fill(color.opacity(0.25))
             if let image {
                 Image(uiImage: image)
                     .resizable()
@@ -18,11 +18,12 @@ struct PlayerDotView: View {
                     .clipShape(Circle())
             } else {
                 Text(initials)
-                    .font(.system(size: size * 0.38, weight: .bold, design: .rounded))
-                    .foregroundStyle(.black)
+                    .font(.system(size: size * 0.38, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.primary)
             }
             Circle().stroke(color, lineWidth: max(2, size * 0.08))
         }
         .frame(width: size, height: size)
+        .accessibilityHidden(true)
     }
 }

@@ -5,48 +5,69 @@ struct GameView: View {
     @Environment(AppModel.self) private var app
     @State private var dragFired = 0
 
-    var body: some View {
-        GeometryReader { geo in
-            let frame = session.frame
-            let myColor = Palette.color(team: frame.myTeam, colorIndex: frame.myColorIndex)
-            ZStack {
-                Palette.paper.ignoresSafeArea()
+    private var frame: RenderFrame { session.frame }
+    private var myColor: Color { Palette.color(team: frame.myTeam, colorIndex: frame.myColorIndex) }
+    private var canTug: Bool { frame.status == .playing && frame.amParticipating && !frame.amEliminated }
 
+    var body: some View {
+        NavigationStack {
+            field
+                .background(Color(.systemBackground))
+                .safeAreaInset(edge: .top, spacing: 0) { statusBar }
+                .safeAreaInset(edge: .bottom, spacing: 0) { controlBar }
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Leave") { app.leaveRoom() }
+                    }
+                    ToolbarItem(placement: .principal) {
+                        VStack(spacing: 0) {
+                            Text(session.isPractice ? "Practice" : session.code)
+                                .font(.headline)
+                                .monospaced(!session.isPractice)
+                            Text(frame.mode == .circular
+                                 ? "\(frame.mode.title) · \(frame.teamMode.title)"
+                                 : frame.mode.title)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    ToolbarItem(placement: .topBarTrailing) { score }
+                }
+                .sheet(isPresented: Binding(get: { frame.status == .finished }, set: { _ in })) {
+                    ResultsView(session: session)
+                }
+        }
+    }
+
+    // MARK: - Field
+
+    private var field: some View {
+        GeometryReader { geo in
+            ZStack {
                 GameCanvas(frame: frame, avatars: session.avatars)
-                    .frame(width: geo.size.width, height: geo.size.height)
                     .contentShape(Rectangle())
                     .onTapGesture { session.tug() }
                     .gesture(
                         DragGesture(minimumDistance: 10)
-                            .onChanged { v in handleDrag(v, frame: frame) }
+                            .onChanged { v in handleDrag(v) }
                             .onEnded { _ in dragFired = 0 }
                     )
-
-                VStack(spacing: 0) {
-                    topBar(frame)
-                    Spacer()
-                    bottomBar(frame, color: myColor)
-                }
-
                 if let n = frame.countdownSeconds, frame.status == .countdown {
                     Text(n > 0 ? "\(n)" : "GO!")
-                        .font(.system(size: 110, weight: .black, design: .rounded))
-                        .foregroundStyle(.black.opacity(0.85))
-                        .contentTransition(.numericText())
+                        .font(.system(size: 96, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.primary)
+                        .contentTransition(.numericText(countsDown: true))
                         .animation(.snappy, value: n)
-                }
-
-                if frame.status == .finished {
-                    ResultsOverlay(session: session)
+                        .accessibilityLabel(n > 0 ? "Starting in \(n)" : "Go")
                 }
             }
             .onAppear { session.viewport = geo.size }
-            .onChange(of: geo.size) { _, s in session.viewport = s }
+            .onChange(of: geo.size) { _, size in session.viewport = size }
         }
-        .statusBarHidden(false)
     }
 
-    private func handleDrag(_ v: DragGesture.Value, frame: RenderFrame) {
+    private func handleDrag(_ v: DragGesture.Value) {
         guard let dirW = frame.myPullDirectionWorld else { return }
         let d = frame.camera.toScreen(direction: dirW)
         let proj = Double(v.translation.width) * d.dx + Double(v.translation.height) * d.dy
@@ -57,166 +78,124 @@ struct GameView: View {
         }
     }
 
-    // MARK: HUD
+    // MARK: - Bars
 
     @ViewBuilder
-    private func topBar(_ frame: RenderFrame) -> some View {
-        VStack(spacing: 8) {
-            HStack {
-                Button(role: .destructive) { app.leaveRoom() } label: {
-                    Image(systemName: "xmark").font(.headline).padding(8)
-                }
-                .buttonStyle(.bordered)
-                Spacer()
-                VStack(spacing: 2) {
-                    Text(session.isPractice ? "PRACTICE" : session.code)
-                        .font(.system(.subheadline, design: .monospaced).bold())
-                    Text(frame.mode.title + (frame.mode == .circular ? " · " + frame.teamMode.title : ""))
-                        .font(.caption2).foregroundStyle(.secondary)
-                }
-                Spacer()
-                switch frame.mode {
-                case .linear:
-                    HStack(spacing: 6) {
-                        Text("\(frame.aliveRed)").foregroundStyle(Palette.red)
-                        Text("v").foregroundStyle(.secondary)
-                        Text("\(frame.aliveBlue)").foregroundStyle(Palette.blue)
-                    }
-                    .font(.headline.monospacedDigit())
-                case .circular:
-                    if frame.teamMode == .teams {
-                        HStack(spacing: 6) {
-                            Text("\(frame.aliveRed)").foregroundStyle(Palette.red)
-                            Text("v").foregroundStyle(.secondary)
-                            Text("\(frame.aliveBlue)").foregroundStyle(Palette.blue)
-                        }
-                        .font(.headline.monospacedDigit())
-                    } else {
-                        Text("\(frame.aliveTotal) left").font(.headline.monospacedDigit())
-                    }
-                }
+    private var score: some View {
+        if frame.mode == .circular && frame.teamMode == .individual {
+            Text("\(frame.aliveTotal) left")
+                .font(.subheadline.monospacedDigit())
+                .foregroundStyle(.secondary)
+        } else {
+            HStack(spacing: 4) {
+                Text("\(frame.aliveRed)").foregroundStyle(Palette.red)
+                Text("–").foregroundStyle(.secondary)
+                Text("\(frame.aliveBlue)").foregroundStyle(Palette.blue)
             }
-            if frame.mode == .linear {
-                TugMeter(x: frame.ropeX / GameConfig.goalDistance)
-            } else if frame.suddenDeath {
-                Text("Sudden death — the hole is growing")
-                    .font(.caption.bold()).foregroundStyle(.red)
-            }
-            if !frame.isConnected {
-                Label("Reconnecting…", systemImage: "wifi.exclamationmark")
-                    .font(.caption.bold()).padding(6)
-                    .background(.orange.opacity(0.2), in: Capsule())
-            }
-            if !frame.amParticipating {
-                Text("You joined mid-round. You're in the next one.")
-                    .font(.caption).padding(6)
-                    .background(.thinMaterial, in: Capsule())
-            } else if frame.amEliminated && frame.status == .playing {
-                Text("You fell in! Watching the rest…")
-                    .font(.caption.bold()).padding(6)
-                    .background(.thinMaterial, in: Capsule())
-            } else if frame.waitingCount > 0 {
-                Text("\(frame.waitingCount) waiting for the next round")
-                    .font(.caption2).foregroundStyle(.secondary)
-            }
+            .font(.subheadline.monospacedDigit().weight(.semibold))
+            .accessibilityLabel("Red \(frame.aliveRed), blue \(frame.aliveBlue)")
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
     }
 
     @ViewBuilder
-    private func bottomBar(_ frame: RenderFrame, color: Color) -> some View {
-        let canTug = frame.status == .playing && frame.amParticipating && !frame.amEliminated
-        VStack(spacing: 10) {
-            if canTug {
-                PullMeter(value: frame.myPull, color: color, tiltAvailable: session.motion.isAvailable)
+    private var statusBar: some View {
+        VStack(spacing: 6) {
+            if frame.mode == .linear {
+                Gauge(value: clamp(frame.ropeX / GameConfig.goalDistance, -1, 1), in: -1...1) {
+                    Text("Rope")
+                } currentValueLabel: {
+                    EmptyView()
+                } minimumValueLabel: {
+                    Text("RED").font(.caption2).foregroundStyle(Palette.red)
+                } maximumValueLabel: {
+                    Text("BLUE").font(.caption2).foregroundStyle(Palette.blue)
+                }
+                .gaugeStyle(.accessoryLinear)
+                .tint(Gradient(colors: [Palette.red, Palette.blue]))
             }
+            if let message = statusMessage {
+                Label(message.text, systemImage: message.symbol)
+                    .font(.caption)
+                    .foregroundStyle(message.tint)
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+        .background(.bar)
+    }
+
+    private var statusMessage: (text: String, symbol: String, tint: Color)? {
+        if !frame.isConnected {
+            return ("Reconnecting…", "wifi.exclamationmark", .orange)
+        }
+        if frame.suddenDeath && frame.status == .playing {
+            return ("Sudden death — the hole is growing", "exclamationmark.triangle.fill", .orange)
+        }
+        if !frame.amParticipating {
+            return ("You are in the next round", "hourglass", .secondary)
+        }
+        if frame.amEliminated && frame.status == .playing {
+            return ("You fell in. Watching the rest.", "arrow.down.circle", .secondary)
+        }
+        if frame.waitingCount > 0 {
+            return ("\(frame.waitingCount) waiting for the next round", "person.badge.clock", .secondary)
+        }
+        return nil
+    }
+
+    private var controlBar: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: session.motion.isAvailable
+                      ? "iphone.gen3.radiowaves.left.and.right" : "iphone.slash")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+                ProgressView(value: canTug ? frame.myPull : 0)
+                    .tint(myColor)
+                Text(session.motion.isAvailable ? "\(Int(frame.myPull * 100))%" : "No tilt")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 52, alignment: .trailing)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Pull strength")
+
             HStack(spacing: 12) {
                 Button {
                     session.tug()
                 } label: {
                     Text("TUG!")
-                        .font(.system(size: 30, weight: .black, design: .rounded))
+                        .font(.title2.weight(.bold))
                         .frame(maxWidth: .infinity)
-                        .frame(height: 72)
                 }
                 .buttonStyle(.borderedProminent)
-                .tint(color)
+                .controlSize(.extraLarge)
+                .tint(myColor)
                 .disabled(!canTug)
+
                 Button {
                     session.recenterTilt()
                 } label: {
-                    VStack(spacing: 2) {
-                        Image(systemName: "scope").font(.title2)
-                        Text("recenter").font(.caption2)
-                    }
-                    .frame(width: 64, height: 72)
+                    Image(systemName: "scope")
+                        .font(.title3)
                 }
                 .buttonStyle(.bordered)
+                .controlSize(.extraLarge)
                 .disabled(!session.motion.isAvailable)
+                .accessibilityLabel("Recenter tilt")
             }
+
             Text(session.motion.isAvailable
-                 ? "Tilt toward the arrow to pull · swipe or tap for a TUG"
+                 ? "Tilt toward the arrow to pull. Swipe or tap for a tug."
                  : "Swipe toward the arrow, tap the field, or press TUG!")
-                .font(.footnote).foregroundStyle(.secondary)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal)
         .padding(.top, 10)
-        .padding(.bottom, 10)
-        .background(
-            LinearGradient(colors: [Palette.paper.opacity(0), Palette.paper.opacity(0.92), Palette.paper],
-                           startPoint: .top, endPoint: .bottom)
-                .padding(.top, -30)
-        )
-    }
-}
-
-/// Linear mode: where the knot sits between the two goal lines.
-struct TugMeter: View {
-    var x: Double   // -1 (red goal) … +1 (blue goal)
-
-    var body: some View {
-        GeometryReader { g in
-            let w = g.size.width
-            let pos = w * (0.5 + clamp(x, -1, 1) / 2)
-            ZStack(alignment: .leading) {
-                HStack(spacing: 0) {
-                    Rectangle().fill(Palette.red.opacity(0.35))
-                    Rectangle().fill(Palette.blue.opacity(0.35))
-                }
-                .clipShape(Capsule())
-                Rectangle().fill(.black.opacity(0.5)).frame(width: 1).offset(x: w / 2)
-                Circle()
-                    .fill(.white)
-                    .overlay(Circle().stroke(.black, lineWidth: 2))
-                    .frame(width: 16, height: 16)
-                    .offset(x: pos - 8)
-            }
-        }
-        .frame(height: 16)
-    }
-}
-
-/// My current steady pull from the tilt.
-struct PullMeter: View {
-    var value: Double
-    var color: Color
-    var tiltAvailable: Bool
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: tiltAvailable ? "iphone.gen3.radiowaves.left.and.right" : "iphone.slash")
-                .font(.caption).foregroundStyle(.secondary)
-            GeometryReader { g in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(.black.opacity(0.08))
-                    Capsule().fill(color).frame(width: max(0, g.size.width * value))
-                }
-            }
-            .frame(height: 8)
-            Text(tiltAvailable ? "\(Int(value * 100))%" : "no tilt")
-                .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
-                .frame(width: 44, alignment: .trailing)
-        }
+        .padding(.bottom, 6)
+        .background(.bar)
     }
 }

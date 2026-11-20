@@ -1,6 +1,7 @@
 import SwiftUI
 
 /// Draws one `RenderFrame` through its camera. Pure drawing, no state.
+/// All ink is `.primary` / `.systemBackground`, so the field reads in light and dark mode.
 struct GameCanvas: View {
     let frame: RenderFrame
     let avatars: [String: UIImage]
@@ -9,6 +10,8 @@ struct GameCanvas: View {
         Canvas(rendersAsynchronously: false) { ctx, size in
             let cam = frame.camera
             let z = cam.zoom
+            let ink = Color.primary
+            let paper = Color(.systemBackground)
             func S(_ p: CGPoint) -> CGPoint { cam.toScreen(p, in: size) }
             func circle(_ c: CGPoint, _ r: CGFloat) -> Path {
                 Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r))
@@ -20,10 +23,10 @@ struct GameCanvas: View {
                 // My team's half of the field.
                 if frame.myTeam == .red {
                     ctx.fill(Path(CGRect(x: 0, y: 0, width: center.x, height: size.height)),
-                             with: .color(Palette.red.opacity(0.16)))
+                             with: .color(Palette.red.opacity(0.12)))
                 } else if frame.myTeam == .blue {
                     ctx.fill(Path(CGRect(x: center.x, y: 0, width: size.width - center.x, height: size.height)),
-                             with: .color(Palette.blue.opacity(0.16)))
+                             with: .color(Palette.blue.opacity(0.12)))
                 }
                 // Goal lines.
                 for gx in [-GameConfig.goalDistance, GameConfig.goalDistance] {
@@ -31,17 +34,18 @@ struct GameCanvas: View {
                     var path = Path()
                     path.move(to: CGPoint(x: p.x, y: 0))
                     path.addLine(to: CGPoint(x: p.x, y: size.height))
-                    ctx.stroke(path, with: .color((gx < 0 ? Palette.red : Palette.blue).opacity(0.55)),
+                    ctx.stroke(path, with: .color((gx < 0 ? Palette.red : Palette.blue).opacity(0.6)),
                                style: StrokeStyle(lineWidth: 2, dash: [8, 6]))
-                    ctx.draw(Text(gx < 0 ? "RED GOAL" : "BLUE GOAL").font(.caption2.bold())
-                                .foregroundStyle((gx < 0 ? Palette.red : Palette.blue).opacity(0.8)),
+                    ctx.draw(Text(gx < 0 ? "RED GOAL" : "BLUE GOAL")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(gx < 0 ? Palette.red : Palette.blue),
                              at: CGPoint(x: p.x, y: size.height * 0.5 + 60 * z + 18))
                 }
                 // Centre line.
                 var mid = Path()
                 mid.move(to: CGPoint(x: center.x, y: 0))
                 mid.addLine(to: CGPoint(x: center.x, y: size.height))
-                ctx.stroke(mid, with: .color(.black), style: StrokeStyle(lineWidth: 2, dash: [5, 5]))
+                ctx.stroke(mid, with: .color(ink.opacity(0.45)), style: StrokeStyle(lineWidth: 2, dash: [5, 5]))
                 // Rope.
                 let xs = frame.dots.map { $0.position.x }
                 let left = (xs.min() ?? -GameConfig.linearGap) - 24
@@ -49,22 +53,24 @@ struct GameCanvas: View {
                 var rope = Path()
                 rope.move(to: S(CGPoint(x: left, y: 0)))
                 rope.addLine(to: S(CGPoint(x: right, y: 0)))
-                ctx.stroke(rope, with: .color(.black), style: StrokeStyle(lineWidth: 7 * z, lineCap: .round))
+                ctx.stroke(rope, with: .color(ink), style: StrokeStyle(lineWidth: 7 * z, lineCap: .round))
                 // Knot.
                 let knot = S(CGPoint(x: frame.ropeX, y: 0))
-                ctx.fill(circle(knot, 9 * z), with: .color(.white))
-                ctx.stroke(circle(knot, 9 * z), with: .color(.black), lineWidth: 3 * z)
+                ctx.fill(circle(knot, 9 * z), with: .color(paper))
+                ctx.stroke(circle(knot, 9 * z), with: .color(ink), lineWidth: 3 * z)
 
             case .circular:
                 let hole = S(.zero)
                 // Where the ring rests when nobody is winning.
-                ctx.stroke(circle(hole, frame.ringRadius * z), with: .color(.black.opacity(0.10)),
+                ctx.stroke(circle(hole, frame.ringRadius * z), with: .color(ink.opacity(0.12)),
                            style: StrokeStyle(lineWidth: 2, dash: [6, 8]))
-                // The hole.
-                ctx.fill(circle(hole, frame.holeR * z + 8 * z), with: .color(.black.opacity(0.12)))
+                // The hole: always a dark pit, with a rim so it still reads in dark mode.
+                ctx.fill(circle(hole, frame.holeR * z + 8 * z), with: .color(ink.opacity(0.12)))
                 ctx.fill(circle(hole, frame.holeR * z), with: .color(.black))
+                ctx.stroke(circle(hole, frame.holeR * z), with: .color(ink.opacity(0.35)), lineWidth: 2)
                 if frame.suddenDeath {
-                    ctx.draw(Text("SUDDEN DEATH").font(.caption2.bold()).foregroundStyle(.white.opacity(0.8)), at: hole)
+                    ctx.draw(Text("SUDDEN DEATH").font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white), at: hole)
                 }
                 // Ropes: a spoke from every standing player to the knot, and the rope ring
                 // through the players (it caves in where people are being dragged).
@@ -75,11 +81,11 @@ struct GameCanvas: View {
                     spokes.move(to: S(d.position))
                     spokes.addLine(to: knot)
                 }
-                ctx.stroke(spokes, with: .color(.black.opacity(0.22)), lineWidth: 2.5 * z)
-                ctx.stroke(closedSpline(standing.map { S($0.position) }), with: .color(.black),
+                ctx.stroke(spokes, with: .color(ink.opacity(0.25)), lineWidth: 2.5 * z)
+                ctx.stroke(closedSpline(standing.map { S($0.position) }), with: .color(ink),
                            style: StrokeStyle(lineWidth: 7 * z, lineCap: .round, lineJoin: .round))
-                ctx.fill(circle(knot, 8 * z), with: .color(.white))
-                ctx.stroke(circle(knot, 8 * z), with: .color(.black), lineWidth: 3 * z)
+                ctx.fill(circle(knot, 8 * z), with: .color(paper))
+                ctx.stroke(circle(knot, 8 * z), with: .color(ink), lineWidth: 3 * z)
             }
 
             // Dots (eliminated ones shrink into the hole).
@@ -100,20 +106,21 @@ struct GameCanvas: View {
                 if d.isMe {
                     ctx.fill(circle(p, r + 7 * z), with: .color(color.opacity(0.25 * alpha)))
                 }
-                ctx.fill(Path(ellipseIn: rect), with: .color(color.opacity(0.35 * alpha)))
+                ctx.fill(Path(ellipseIn: rect), with: .color(color.opacity(0.3 * alpha)))
                 if let img = avatars[d.id] {
                     var layer = ctx
                     layer.opacity = alpha
                     layer.clip(to: Path(ellipseIn: rect.insetBy(dx: 2 * z, dy: 2 * z)))
                     layer.draw(Image(uiImage: img), in: rect)
                 } else {
-                    ctx.draw(Text(d.initials).font(.system(size: r * 0.8, weight: .bold, design: .rounded))
-                                .foregroundStyle(.black.opacity(alpha)), at: p)
+                    ctx.draw(Text(d.initials)
+                                .font(.system(size: r * 0.8, weight: .semibold, design: .rounded))
+                                .foregroundStyle(ink.opacity(alpha)), at: p)
                 }
                 ctx.stroke(Path(ellipseIn: rect), with: .color(color.opacity(alpha)), lineWidth: 4 * z)
                 if !d.isMe && z > 0.55 {
-                    ctx.draw(Text(d.name).font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(.black.opacity(0.6 * alpha)),
+                    ctx.draw(Text(d.name).font(.caption2)
+                                .foregroundStyle(Color.secondary.opacity(alpha)),
                              at: CGPoint(x: p.x, y: p.y + r + 11))
                 }
             }
@@ -136,12 +143,17 @@ struct GameCanvas: View {
                 let hs = 11.0
                 let perp = CGVector(dx: -d.dy, dy: d.dx)
                 arrow.move(to: end)
-                arrow.addLine(to: CGPoint(x: end.x - d.dx * hs + perp.dx * hs * 0.7, y: end.y - d.dy * hs + perp.dy * hs * 0.7))
+                arrow.addLine(to: CGPoint(x: end.x - d.dx * hs + perp.dx * hs * 0.7,
+                                          y: end.y - d.dy * hs + perp.dy * hs * 0.7))
                 arrow.move(to: end)
-                arrow.addLine(to: CGPoint(x: end.x - d.dx * hs - perp.dx * hs * 0.7, y: end.y - d.dy * hs - perp.dy * hs * 0.7))
-                ctx.stroke(arrow, with: .color(.black), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                arrow.addLine(to: CGPoint(x: end.x - d.dx * hs - perp.dx * hs * 0.7,
+                                          y: end.y - d.dy * hs - perp.dy * hs * 0.7))
+                ctx.stroke(arrow, with: .color(ink),
+                           style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
                 let label = CGPoint(x: anchor.x - d.dx * 34, y: anchor.y - d.dy * 34)
-                ctx.draw(Text("TUG!").font(.system(size: 21 + pulse * 5, weight: .black)).foregroundStyle(.black), at: label)
+                ctx.draw(Text("TUG!")
+                            .font(.system(size: 21 + pulse * 5, weight: .bold, design: .rounded))
+                            .foregroundStyle(ink), at: label)
             }
         }
     }

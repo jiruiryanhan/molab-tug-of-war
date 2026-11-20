@@ -17,8 +17,11 @@ Join a room three ways: **type the 4-letter code**, **open an AirDropped link**
 wrote the link onto. There is also an offline **practice vs bots** mode that uses the same
 physics and the same room logic without a network.
 
-Written in Swift / SwiftUI (iOS 17+). Multiplayer is Firebase **Realtime Database** with
-anonymous auth, the same approach as the class MoLobby / AnonLobby examples.
+Written in Swift / SwiftUI (iOS 17+). The interface is plain system UI — `Form`, `List`,
+system colours, SF Symbols, `Gauge`, native sheets and toolbars — so it looks like the rest
+of iOS and follows light and dark mode and Dynamic Type. Only the playing field is drawn by
+hand, with a SwiftUI `Canvas`. Multiplayer is Firebase **Realtime Database** with anonymous
+auth, the same approach as the class MoLobby / AnonLobby examples.
 
 ## Repo layout
 
@@ -31,7 +34,7 @@ TugOfWar/
   Services/                RoomTransport protocol + Firebase and in-memory implementations,
                            anonymous auth, tilt input (CoreMotion), NFC, join links
   Session/                 RoomSession (lobby + host loop + interpolation + camera), bots
-  Views/                   Home, Lobby, Game canvas + HUD, results
+  Views/                   Home (Form), Lobby (List), Game canvas + HUD, results sheet
 database.rules.json        Realtime Database rules (signed-in users only)
 docs/ai-usage.md           AI assistance log (prompt + what was produced)
 docs/proposal-week10.md    the original week-10 proposal and plan
@@ -128,8 +131,8 @@ Everything for a room lives under `tug/rooms/{CODE}` in Realtime Database:
 
 ## Status
 
-Built with Xcode 27.2 and verified in the iOS Simulator in practice mode (both arenas,
-camera, eliminations, results, rematch). Online play against another phone, AirDrop links,
+Built with Xcode 27.2 and verified in the iOS Simulator in practice mode, in light and dark
+mode (both arenas, camera, eliminations, sudden death, results, rematch). Online play against another phone, AirDrop links,
 tilt and NFC need real devices and a Firebase plist — see *Setup*. The original proposal
 and week-10 notes are in [docs/proposal-week10.md](docs/proposal-week10.md).
 

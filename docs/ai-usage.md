@@ -94,3 +94,45 @@ pointing away from the hole).
 * Concept, the two sketches, the proposal and weekly plan (`docs/proposal-week10.md`).
 * Reviewing the result, testing on real phones, tuning the constants in
   `Engine/GameConfig.swift`, and whatever changes come after this commit.
+
+## Session 2 — 19 Nov 2026
+
+### My prompt (verbatim)
+
+> 我觉得最好还是用苹果原生的 UI 吧。我们不要自己设计 UI，直接用 Xcode、Swift 那些东西，界面可以做得很简单、很干净，都用苹果的界面风格
+>
+> 做好之后Merge to main
+
+(In English: use Apple's native UI instead of a custom-designed one — keep it simple and
+clean, in Apple's own interface style — then merge to main.)
+
+### What the AI produced
+
+* Rebuilt every screen out of standard SwiftUI controls, with no hand-made cards,
+  materials or fixed-size fonts:
+  * **Home** is a `Form`: a player section (dot, name field, `PhotosPicker`, tilt toggle),
+    a "Play with Friends" section (create, room-code field, join, NFC scan) whose footer
+    carries the connection state, a practice section, and a "How to Play" section.
+  * **New Room** is a `Form` sheet with an inline `Picker` for the arena, a segmented
+    picker for teams, a `Stepper` for bots, and Cancel / Create in the toolbar.
+  * **Lobby** is a `List` with the room code (selectable), `ShareLink`, copy and NFC rows,
+    player sections, and a Start Round button.
+  * **Game** is a `NavigationStack` with a real toolbar (leave, room code, score), the
+    rope position as a native `Gauge`, the pull strength as a `ProgressView`, and the
+    controls in a `.bar`-backed bottom inset. The field is laid out inside the safe area,
+    so the camera no longer centres on pixels hidden behind the bars.
+  * **Results** is a half-height sheet with `presentationDetents` and background
+    interaction, so the final field stays visible behind it.
+* Switched all colours to system colours (`.red`, `.blue`, `Color(.systemBackground)`,
+  `.primary`, `.secondary`), so the whole app, the drawn field included, works in dark
+  mode; set the accent colour to the system blue; redrew the app icon in system colours
+  and without an alpha channel.
+* Text is now Dynamic Type styles rather than fixed point sizes, and the dots, meters and
+  toolbar items carry accessibility labels.
+
+### What was verified
+
+* Builds clean on Xcode 27.2, and practice rounds were run in the iOS Simulator in both
+  light and dark mode (home, lobby, both arenas, sudden death, results).
+* Still unverified: online play, AirDrop links, tilt and NFC, which need real phones and a
+  Firebase config file.
